@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Get Diamond Info</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <nav class="navbar">
+    <span class="brand">Get Diamond Info</span>
+    <div class="nav-links">
+      <a href="/index.html">Home</a>
+      <a href="/about.html">About</a>
+      <a href="/contact.html">Contact</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <h1>Look up a Certificate</h1>
+    <div class="lookup-row">
+      <label for="txtCertNo">Certificate #</label>
+      <input type="text" id="txtCertNo" placeholder="e.g. 2221514363" />
+      <button id="btnLoadCert">Load Certificate</button>
+    </div>
+
+    <h1 style="margin-top:40px;">Look up a Parcel</h1>
+    <div class="lookup-row">
+      <label for="txtParcelNo">Parcel #</label>
+      <input type="text" id="txtParcelNo" placeholder="e.g. 2222_12302024_111" />
+      <button id="btnLoadParcel">Load Parcel</button>
+    </div>
+  </main>
+
+  <script>
+    // Embedded JS: wire up the two lookup forms
+    document.getElementById('btnLoadCert').addEventListener('click', () => {
+      const certNo = document.getElementById('txtCertNo').value.trim();
+      if (certNo) window.location.href = `/stonedetails/${encodeURIComponent(certNo)}`;
+    });
+    document.getElementById('txtCertNo').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('btnLoadCert').click();
+    });
+
+    document.getElementById('btnLoadParcel').addEventListener('click', () => {
+      const parcelNo = document.getElementById('txtParcelNo').value.trim();
+      if (parcelNo) window.location.href = `/parcel/${encodeURIComponent(parcelNo)}`;
+    });
+    document.getElementById('txtParcelNo').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('btnLoadParcel').click();
+    });
+  </script>
+</body>
+</html>

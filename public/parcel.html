@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Parcel Details - Get Diamond Info</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <nav class="navbar">
+    <span class="brand">Get Diamond Info</span>
+    <div class="nav-links">
+      <a href="/index.html">Home</a>
+      <a href="/about.html">About</a>
+      <a href="/contact.html">Contact</a>
+    </div>
+  </nav>
+
+  <style>
+    /* Large 2-per-row parcel gallery, scoped to this page only */
+    .parcel-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    @media (max-width: 800px) {
+      .parcel-grid { grid-template-columns: 1fr; }
+    }
+    .parcel-card { text-align: center; }
+    .parcel-card img {
+      width: 100%;
+      height: auto;
+      display: block;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .parcel-card .gallery-label {
+      margin-top: 8px;
+      font-size: 0.9em;
+      color: #555;
+      word-break: break-all;
+    }
+    .container.wide { max-width: none; padding-left: 24px; padding-right: 24px; }
+  </style>
+
+  <main class="container wide">
+    <a id="whatsappLink" class="btn-link" href="#" target="_blank">Share on WhatsApp</a>
+    <h1 id="parcelTitle">Loading...</h1>
+
+    <section class="panel">
+      <div id="imageGrid" class="parcel-grid"></div>
+    </section>
+  </main>
+
+  <div id="lightbox" class="lightbox" onclick="this.style.display='none'">
+    <img id="lightboxImg" src="" alt="" />
+  </div>
+
+  <script>
+    // Embedded JS: fetch parcel details from the backend API and render them
+    const parcelNo = window.location.pathname.split('/').pop();
+
+    async function loadParcel() {
+      try {
+        const res = await fetch(`/api/parcel/${encodeURIComponent(parcelNo)}`);
+        if (!res.ok) throw new Error('Request failed');
+        const data = await res.json();
+        render(data);
+      } catch (err) {
+        document.getElementById('parcelTitle').textContent = `Could not load parcel ${parcelNo}`;
+        console.error(err);
+      }
+    }
+
+    function render(data) {
+      document.getElementById('parcelTitle').textContent = `CVD Testing Images - ${data.parcelNo}`;
+      document.getElementById('whatsappLink').href = data.whatsappLink;
+
+      const imageGrid = document.getElementById('imageGrid');
+      if (!data.images || !data.images.length) {
+        imageGrid.innerHTML = '<p>No images found for this parcel.</p>';
+        return;
+      }
+      data.images.forEach((item) => {
+        const card = document.createElement('div');
+        card.className = 'parcel-card';
+
+        const img = document.createElement('img');
+        img.src = item.url;
+        img.alt = item.filename;
+        img.title = item.filename;
+        img.addEventListener('click', () => openLightbox(item.url));
+
+        const label = document.createElement('div');
+        label.className = 'gallery-label';
+        label.textContent = item.filename;
+
+        card.appendChild(img);
+        card.appendChild(label);
+        imageGrid.appendChild(card);
+      });
+    }
+
+    function openLightbox(src) {
+      const lightbox = document.getElementById('lightbox');
+      document.getElementById('lightboxImg').src = src;
+      lightbox.style.display = 'flex';
+    }
+
+    loadParcel();
+  </script>
+</body>
+</html>

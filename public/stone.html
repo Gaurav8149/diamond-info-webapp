@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stone Media - Get Diamond Info</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    .container.wide { max-width: 1300px; }
+
+    .action-row {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    .action-link {
+      background: none;
+      border: none;
+      color: #7a1fa2;
+      text-decoration: underline;
+      font-weight: bold;
+      font-size: 0.9em;
+      letter-spacing: 0.3px;
+      cursor: pointer;
+      padding: 0;
+    }
+    .action-link:disabled {
+      color: #aaa;
+      cursor: not-allowed;
+      text-decoration: none;
+    }
+    .action-link.copied { color: #1a7a1a; }
+
+    .certificate-img {
+      width: 100%;
+      max-width: 100%;
+      height: auto;
+      display: block;
+      cursor: zoom-in;
+    }
+    .disclaimer {
+      font-size: 0.9em;
+      color: #333;
+      margin: 0 0 14px;
+    }
+
+    /* Two-column media section: images left, video right */
+    .media-columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    @media (max-width: 900px) {
+      .media-columns { grid-template-columns: 1fr; }
+    }
+
+    #mainImage {
+      width: 100%;
+      max-height: 520px;
+      object-fit: contain;
+      background: #f4f4f4;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      cursor: zoom-in;
+      display: block;
+    }
+    .thumb-strip {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+    .thumb-strip img {
+      width: 70px;
+      height: 70px;
+      object-fit: cover;
+      border: 2px solid #ddd;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .thumb-strip img.active { border-color: #1155cc; }
+
+    .video-tabs {
+      display: flex;
+      gap: 18px;
+      margin-bottom: 10px;
+    }
+    .video-tabs a {
+      color: #7a1fa2;
+      text-decoration: underline;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .video-tabs a.active { color: #1155cc; }
+
+    #videoPlayerWrap {
+      background: #000;
+      border-radius: 4px;
+      overflow: hidden;
+      max-height: 520px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #videoPlayerWrap video,
+    #videoPlayerWrap iframe {
+      width: 100%;
+      max-height: 520px;
+      aspect-ratio: 16 / 9;
+      border: 0;
+      display: block;
+    }
+
+    .empty-note { color: #888; font-size: 0.9em; }
+
+    /* Zoomable image lightbox */
+    .lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.9);
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      overflow: hidden;
+      flex-direction: column;
+    }
+    .lightbox-img-wrap {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      cursor: grab;
+    }
+    .lightbox-img-wrap.dragging { cursor: grabbing; }
+    .lightbox img {
+      max-width: 90vw;
+      max-height: 85vh;
+      border-radius: 4px;
+      user-select: none;
+      -webkit-user-drag: none;
+      transition: transform 0.05s linear;
+    }
+    .lightbox-controls {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 10px;
+      background: rgba(255,255,255,0.1);
+      padding: 8px 12px;
+      border-radius: 8px;
+    }
+    .lightbox-controls button {
+      background: #fff;
+      color: #222;
+      border: none;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      font-size: 1.2em;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .lightbox-close {
+      position: absolute;
+      top: 18px;
+      right: 24px;
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 2em;
+      cursor: pointer;
+      line-height: 1;
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <span class="brand">Get Diamond Info</span>
+    <div class="nav-links">
+      <a href="/index.html">Home</a>
+      <a href="/about.html">About</a>
+      <a href="/contact.html">Contact</a>
+    </div>
+  </nav>
+
+  <main class="container wide">
+    <div class="action-row">
+      <button class="action-link" id="btnCopyPage">COPY PAGE URL</button>
+      <button class="action-link" id="btnCopyCert" disabled>COPY CERTIFICATE LINK</button>
+      <button class="action-link" id="btnCopyVideo" disabled>COPY VIDEO LINK</button>
+    </div>
+
+    <section class="panel">
+      <h2>Certificate</h2>
+      <img id="certificateImg" class="certificate-img" alt="Certificate Not Available"
+           onerror="this.onerror=null;this.src='/images/no-image-available.svg';" />
+    </section>
+
+    <section class="panel media-columns">
+      <div>
+        <p class="disclaimer">In Image color of the diamond may appear different, depending on your screen resolution.</p>
+        <img id="mainImage" alt="Stone image" src="/images/no-image-available.svg" />
+        <div id="thumbStrip" class="thumb-strip"></div>
+        <p id="noImagesNote" class="empty-note" style="display:none;">No images available.</p>
+      </div>
+      <div>
+        <div id="videoTabs" class="video-tabs"></div>
+        <div id="videoPlayerWrap"></div>
+        <p id="noVideosNote" class="empty-note" style="display:none;">No videos available.</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- Zoomable image lightbox -->
+  <div id="lightbox" class="lightbox">
+    <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
+    <div class="lightbox-img-wrap" id="lightboxWrap">
+      <img id="lightboxImg" src="" alt="" />
+    </div>
+    <div class="lightbox-controls">
+      <button onclick="zoomBy(-0.25)" title="Zoom out">&minus;</button>
+      <button onclick="resetZoom()" title="Reset">&#8635;</button>
+      <button onclick="zoomBy(0.25)" title="Zoom in">+</button>
+    </div>
+  </div>
+
+  <script>
+    // Embedded JS: fetch stone details from the backend API and render them
+    const certNo = window.location.pathname.split('/').pop();
+    let currentCertLink = '';
+    let stoneImages = [];
+    let stoneVideos = [];
+
+    async function loadStone() {
+      try {
+        const res = await fetch(`/api/stone/${encodeURIComponent(certNo)}`);
+        if (!res.ok) throw new Error('Request failed');
+        const data = await res.json();
+        render(data);
+      } catch (err) {
+        document.querySelector('h2').textContent = `Could not load certificate ${certNo}`;
+        console.error(err);
+      }
+    }
+
+    function render(data) {
+      document.title = `GIA ${data.certNo} - Get Diamond Info`;
+
+      // Certificate
+      const certImg = document.getElementById('certificateImg');
+      const certUrl = data.certificateImage || '';
+      certImg.src = certUrl || '/images/no-image-available.svg';
+      if (certUrl) {
+        currentCertLink = window.location.origin + certUrl;
+        document.getElementById('btnCopyCert').disabled = false;
+      }
+      certImg.addEventListener('click', () => {
+        if (certUrl) openLightboxImage(certUrl);
+      });
+
+      // Images -> main image + thumbnail strip
+      stoneImages = data.images || [];
+      const thumbStrip = document.getElementById('thumbStrip');
+      const mainImage = document.getElementById('mainImage');
+
+      if (stoneImages.length) {
+        mainImage.src = stoneImages[0];
+        mainImage.addEventListener('click', () => openLightboxImage(mainImage.src));
+
+        stoneImages.forEach((src, i) => {
+          const t = document.createElement('img');
+          t.src = src;
+          t.alt = `Thumbnail ${i + 1}`;
+          if (i === 0) t.classList.add('active');
+          t.addEventListener('click', () => {
+            mainImage.src = src;
+            thumbStrip.querySelectorAll('img').forEach((el) => el.classList.remove('active'));
+            t.classList.add('active');
+          });
+          thumbStrip.appendChild(t);
+        });
+      } else {
+        mainImage.style.display = 'none';
+        document.getElementById('noImagesNote').style.display = 'block';
+      }
+
+      // Videos -> tabs + embedded player
+      stoneVideos = data.videos || [];
+      const videoTabs = document.getElementById('videoTabs');
+      const playerWrap = document.getElementById('videoPlayerWrap');
+
+      if (stoneVideos.length) {
+        stoneVideos.forEach((src, i) => {
+          const a = document.createElement('a');
+          a.textContent = `Video ${i + 1}`;
+          if (i === 0) a.classList.add('active');
+          a.addEventListener('click', () => {
+            playVideo(src);
+            videoTabs.querySelectorAll('a').forEach((el) => el.classList.remove('active'));
+            a.classList.add('active');
+          });
+          videoTabs.appendChild(a);
+        });
+        playVideo(stoneVideos[0]);
+        currentVideoLink = stoneVideos[0].startsWith('http') ? stoneVideos[0] : window.location.origin + stoneVideos[0];
+        document.getElementById('btnCopyVideo').disabled = false;
+      } else {
+        document.getElementById('noVideosNote').style.display = 'block';
+      }
+    }
+
+    let currentVideoLink = '';
+    function playVideo(src) {
+      currentVideoLink = src.startsWith('http') ? src : window.location.origin + src;
+      const playerWrap = document.getElementById('videoPlayerWrap');
+      playerWrap.innerHTML = '';
+      const isLocalFile = /\.(mp4|avi|mov|webm)$/i.test(src);
+      if (isLocalFile) {
+        const video = document.createElement('video');
+        video.src = src;
+        video.controls = true;
+        playerWrap.appendChild(video);
+      } else {
+        const iframe = document.createElement('iframe');
+        iframe.src = src;
+        iframe.setAttribute('allowfullscreen', 'true');
+        playerWrap.appendChild(iframe);
+      }
+    }
+
+    // --- Copy-link buttons ---
+    function copyToClipboard(text, btn) {
+      navigator.clipboard.writeText(text).then(() => {
+        const original = btn.textContent;
+        btn.textContent = 'COPIED!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = original; btn.classList.remove('copied'); }, 1500);
+      });
+    }
+    document.getElementById('btnCopyPage').addEventListener('click', (e) => copyToClipboard(window.location.href, e.currentTarget));
+    document.getElementById('btnCopyCert').addEventListener('click', (e) => copyToClipboard(currentCertLink, e.currentTarget));
+    document.getElementById('btnCopyVideo').addEventListener('click', (e) => copyToClipboard(currentVideoLink, e.currentTarget));
+
+    // --- Zoomable lightbox logic ---
+    let scale = 1, panX = 0, panY = 0, isDragging = false, dragStartX = 0, dragStartY = 0;
+
+    function openLightboxImage(src) {
+      const img = document.getElementById('lightboxImg');
+      img.src = src;
+      scale = 1; panX = 0; panY = 0;
+      applyTransform();
+      document.getElementById('lightbox').style.display = 'flex';
+    }
+    function closeLightbox() { document.getElementById('lightbox').style.display = 'none'; }
+    function applyTransform() {
+      document.getElementById('lightboxImg').style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+    }
+    function zoomBy(delta) {
+      scale = Math.min(5, Math.max(1, scale + delta));
+      if (scale === 1) { panX = 0; panY = 0; }
+      applyTransform();
+    }
+    function resetZoom() { scale = 1; panX = 0; panY = 0; applyTransform(); }
+
+    const wrap = document.getElementById('lightboxWrap');
+    wrap.addEventListener('wheel', (e) => { e.preventDefault(); zoomBy(e.deltaY < 0 ? 0.2 : -0.2); }, { passive: false });
+    wrap.addEventListener('dblclick', resetZoom);
+    wrap.addEventListener('mousedown', (e) => {
+      if (scale <= 1) return;
+      isDragging = true; wrap.classList.add('dragging');
+      dragStartX = e.clientX - panX; dragStartY = e.clientY - panY;
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      panX = e.clientX - dragStartX; panY = e.clientY - dragStartY;
+      applyTransform();
+    });
+    window.addEventListener('mouseup', () => { isDragging = false; wrap.classList.remove('dragging'); });
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) closeLightbox(); });
+    window.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLightbox(); });
+
+    loadStone();
+  </script>
+</body>
+</html>
