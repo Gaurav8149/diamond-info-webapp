@@ -67,6 +67,17 @@ const CONFIG = {
     options: { encrypt: false, trustServerCertificate: true }
   }
   ,
+  // Certificate lab lookup (GIA / HRD): reads the LAB column from
+  //   <database>..<table>   e.g.  J..diamondlist
+  // matching the certificate number in certColumn.
+  // Leave DB_LAB_COLUMN or DB_LAB_CERT_COLUMN blank to skip this lookup.
+  LAB: {
+    database: (process.env.DB_LAB_DATABASE || 'J').trim(),
+    table: (process.env.DB_LAB_TABLE || 'diamondlist').trim(),
+    column: (process.env.DB_LAB_COLUMN || 'LAB').trim(),
+    certColumn: (process.env.DB_LAB_CERT_COLUMN || '').trim()
+  },
+
   // Local folder listing cache TTL (milliseconds)
   LOCAL_CACHE_TTL_MS: parseInt(process.env.LOCAL_CACHE_TTL_SECONDS || '30', 10) * 1000
 };
@@ -159,11 +170,14 @@ function getLocalFiles(folder) {
   const entry = localFolderCache.get(folder);
   if (entry && (now - entry.fetchedAt) <= CONFIG.LOCAL_CACHE_TTL_MS) return entry.files;
 
-  // Refresh cache
   try {
-    const files = fs.existsSync(folder) ? fs.readdirSync(folder) : [];
-    localFolderCache.set(folder, { files, fetchedAt: now });
-    return files;
+    const files = fs.existsSync(folder) ? fs.readdirSync(folder, { withFileTypes: true }) : [];
+    const flattened = files
+      .filter((dirent) => dirent.isFile())
+      .map((dirent) => dirent.name);
+
+    localFolderCache.set(folder, { files: flattened, fetchedAt: now });
+    return flattened;
   } catch (err) {
     console.error('Failed to read media folder', folder, err.message);
     localFolderCache.set(folder, { files: [], fetchedAt: now });
@@ -248,44 +262,100 @@ app.get('/media-s3/*', async (req, res) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// Combined lookup: searches every local folder AND the S3 bucket (if enabled)
-// for files starting with `prefix` and matching `extensions`. Returns a
-// merged array of { name, url } entries from whichever source(s) had matches.
-// ---------------------------------------------------------------------------
-async function findAllFiles(prefix, extensions) {
-  const results = [];
+// Turns a lab name / file name into 'HRD' or 'GIA'.
+// Returns null when it can't tell, so the caller can try another source
+// instead of silently assuming GIA.
+function detectIssuerFromFilename(filename) {
+  const name = String(filename || '').toLowerCase();
+  if (name.includes('hrd') || name.includes('antwerp')) return 'HRD';
+  if (name.includes('gia')) return 'GIA';
+  return null;
+}
+
+// Reads the lab from  <database>..<table>  (J..diamondlist), column LAB,
+// matching the certificate number. Returns 'HRD', 'GIA', another lab name, or null.
+async function getIssuerFromDb(certNo) {
+  const { database, table, column, certColumn } = CONFIG.LAB;
+
+  if (!CONFIG.DB.enabled) return null;
+  if (!column || !certColumn) {
+    console.warn('Lab lookup skipped: set DB_LAB_COLUMN and DB_LAB_CERT_COLUMN in .env');
+    return null;
+  }
+
+  // These names come from .env and are placed into the SQL text, so only
+  // allow plain identifier characters.
+  const safe = /^[A-Za-z0-9_]+$/;
+  if (![database, table, column, certColumn].every((v) => safe.test(v))) {
+    console.error('Lab lookup skipped: DB_LAB_* values may only contain letters, numbers and underscores');
+    return null;
+  }
+
+  try {
+    const sql = require('mssql');
+    const pool = await sql.connect(CONFIG.DB);
+    const result = await pool
+      .request()
+      .input('CertNo', sql.VarChar, String(certNo))
+      .query(`
+        SELECT TOP 1 [${column}] AS Lab
+        FROM [${database}]..[${table}]
+        WHERE LTRIM(RTRIM(CAST([${certColumn}] AS VARCHAR(50)))) = @CertNo
+      `);
+
+    const raw = result.recordset[0] && result.recordset[0].Lab;
+    if (!raw || !String(raw).trim()) return null;
+
+    const value = String(raw).trim().toUpperCase();
+    if (value.includes('HRD')) return 'HRD';
+    if (value.includes('GIA')) return 'GIA';
+    return value; // some other lab (IGI, etc.)
+  } catch (err) {
+    console.error('Issuer lookup failed:', err.message);
+    return null;
+  }
+}
+
+async function findMediaByPrefix(prefix) {
+  const results = { images: [], videos: [] };
   const lowerPrefix = prefix.toLowerCase();
 
-  // 1) Search every configured local folder using cached listings
   CONFIG.MEDIA_FOLDER_PATHS.forEach((folder, folderIndex) => {
     const files = getLocalFiles(folder);
-    const matches = files.filter((file) => {
+    files.forEach((file) => {
+      const lowerName = file.toLowerCase();
+      if (!lowerName.startsWith(lowerPrefix)) return;
+
       const ext = path.extname(file).slice(1).toLowerCase();
-      return extensions.includes(ext) && file.toLowerCase().startsWith(lowerPrefix);
-    });
-    matches.forEach((file) => {
-      results.push({ name: file, url: `/media/${folderIndex}/${encodeURIComponent(file)}` });
+      const url = `/media/${folderIndex}/${encodeURIComponent(file)}`;
+
+      if (CONFIG.IMAGE_EXTENSIONS.includes(ext)) {
+        results.images.push({ name: file, url });
+      } else if (CONFIG.VIDEO_EXTENSIONS.includes(ext)) {
+        results.videos.push({ name: file, url });
+      }
     });
   });
 
-  // 2) Search S3 (via the in-memory cache — see getS3Keys() above), if configured.
-  //    We match by FILENAME (basename), not the full key, since files may live
-  //    inside a subfolder rather than the bucket root.
   if (CONFIG.S3.enabled) {
     try {
       const allKeys = await getS3Keys();
       for (const key of allKeys) {
         const filename = path.basename(key);
+        const lowerName = filename.toLowerCase();
+        if (!lowerName.startsWith(lowerPrefix)) continue;
+
         const ext = path.extname(filename).slice(1).toLowerCase();
-        if (!extensions.includes(ext)) continue;
-        if (!filename.toLowerCase().startsWith(lowerPrefix)) continue;
-        results.push({ name: filename, url: await s3FileUrl(key) });
+        const url = await s3FileUrl(key);
+
+        if (CONFIG.IMAGE_EXTENSIONS.includes(ext)) {
+          results.images.push({ name: filename, url });
+        } else if (CONFIG.VIDEO_EXTENSIONS.includes(ext)) {
+          results.videos.push({ name: filename, url });
+        }
       }
     } catch (err) {
       console.error('S3 lookup failed:', err.message);
-      // Don't fail the whole request just because S3 had an issue —
-      // local-folder matches (if any) still get returned.
     }
   }
 
@@ -323,15 +393,11 @@ app.get('/api/stone/:certNo', async (req, res) => {
   const certNo = req.params.certNo;
 
   try {
-    console.time(`findImages:${certNo}`);
-    const imageEntries = await findAllFiles(certNo, CONFIG.IMAGE_EXTENSIONS);
-    console.timeEnd(`findImages:${certNo}`);
+    const media = await findMediaByPrefix(certNo);
+    const imageEntries = media.images;
+    const videoEntries = media.videos;
 
-    console.time(`findVideos:${certNo}`);
-    const videoEntries = await findAllFiles(certNo, CONFIG.VIDEO_EXTENSIONS);
-    console.timeEnd(`findVideos:${certNo}`);
-
-    console.log(`findAllFiles results for ${certNo}: images=${imageEntries.length} videos=${videoEntries.length}`);
+    console.log(`findMediaByPrefix results for ${certNo}: images=${imageEntries.length} videos=${videoEntries.length}`);
 
     const certEntries = imageEntries.filter((e) => e.name.toLowerCase().includes('certificate'));
     const galleryEntries = imageEntries.filter((e) => !e.name.toLowerCase().includes('certificate'));
@@ -340,11 +406,28 @@ app.get('/api/stone/:certNo', async (req, res) => {
     const images = galleryEntries.map((e) => e.url);
     const localVideos = videoEntries.map((e) => e.url);
 
+    // Work out the lab. The database is the source of truth; file names are
+    // only a fallback:
+    //   1) LAB column in J..diamondlist (if configured in .env)
+    //   2) the certificate file name (e.g. 210000127914_HRD_certificate.JPG)
+    //   3) any other image file name for this stone
+    //   4) default to GIA
+    let issuer = await getIssuerFromDb(certNo);
+    if (!issuer && certEntries.length) issuer = detectIssuerFromFilename(certEntries[0].name);
+    if (!issuer) {
+      for (const e of imageEntries) {
+        issuer = detectIssuerFromFilename(e.name);
+        if (issuer) break;
+      }
+    }
+    if (!issuer) issuer = 'GIA';
+
     // Plus any external video links from the DB
     const externalVideos = await getExternalVideoLinks(certNo);
 
     res.json({
       certNo,
+      issuer,
       certificateImage,
       images,
       videos: [...externalVideos, ...localVideos],

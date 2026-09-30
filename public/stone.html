@@ -237,11 +237,39 @@
     let stoneImages = [];
     let stoneVideos = [];
 
+    // Work out which lab issued the certificate (GIA / HRD / other)
+    function detectIssuer(data) {
+      if (!data) return 'GIA';
+
+      // 1) Explicit field from the API (try several likely names)
+      const candidates = [
+        data.issuer, data.lab, data.laboratory,
+        data.certType, data.certificateType, data.certificate_type
+      ];
+      for (const c of candidates) {
+        if (typeof c === 'string' && c.trim()) {
+          const v = c.trim().toUpperCase();
+          if (v.includes('HRD')) return 'HRD';
+          if (v.includes('GIA')) return 'GIA';
+          return v; // some other lab (IGI, etc.)
+        }
+      }
+
+      // 2) Fallback: look at the certificate image path/URL
+      const hint = String(data.certificateImage || '').toUpperCase();
+      if (hint.includes('HRD')) return 'HRD';
+      if (hint.includes('GIA')) return 'GIA';
+
+      // 3) Default
+      return 'GIA';
+    }
+
     async function loadStone() {
       try {
         const res = await fetch(`/api/stone/${encodeURIComponent(certNo)}`);
         if (!res.ok) throw new Error('Request failed');
         const data = await res.json();
+        console.log('Stone API response:', data); // helps verify the issuer field
         render(data);
       } catch (err) {
         document.querySelector('h2').textContent = `Could not load certificate ${certNo}`;
@@ -250,7 +278,8 @@
     }
 
     function render(data) {
-      document.title = `GIA ${data.certNo} - Get Diamond Info`;
+      const certPrefix = detectIssuer(data);
+      document.title = `${certPrefix} ${data.certNo || certNo} - Get Diamond Info`;
 
       // Certificate
       const certImg = document.getElementById('certificateImg');
